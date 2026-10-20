@@ -81,7 +81,7 @@ export default function ToastMenu({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div className="brand-logo" style={{ width: '28px', height: '28px', fontSize: '14px' }}>R</div>
             <div>
-              <h3 className="toast-menu-title">Menù Rapido Pagine</h3>
+              <h3 className="toast-menu-title">Menù Roma Transit by Fox</h3>
               <p className="toast-menu-subtitle">Seleziona la sezione desiderata</p>
             </div>
           </div>

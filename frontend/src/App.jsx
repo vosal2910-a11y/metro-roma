@@ -353,7 +353,9 @@ export default function App() {
           <div className="brand-logo">R</div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h1 className="brand-title">Roma Transit Express</h1>
+              <h1 className="brand-title">
+                Roma Transit Express <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--color-primary)', background: 'var(--color-primary-container)', padding: '2px 7px', borderRadius: '8px', marginLeft: '2px', verticalAlign: 'middle' }}>by Fox</span>
+              </h1>
               <span className="brand-badge">
                 <span className="pulse-dot"></span>
                 LIVE GTFS-RT

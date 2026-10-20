@@ -85,7 +85,7 @@ fun MainScreen(
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(
-                                    "Roma Transit",
+                                    "Roma Transit by Fox",
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 17.sp,
                                     maxLines = 1
