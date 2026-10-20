@@ -1,0 +1,26 @@
+version: '3.9'
+
+services:
+  roma-gtfs-backend:
+    build: .
+    container_name: roma-transit-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - OTP_URL=http://otp-roma:8080/otp/routers/default/plan
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  otp-roma:
+    image: opentripplanner/opentripplanner:2.5.0
+    container_name: otp-roma
+    ports:
+      - "8080:8080"
+    environment:
+      - JAVA_TOOL_OPTIONS=-Xmx4G
+    volumes:
+      - ./otp-data:/var/opentripplanner
+    command: --load --serve
+    restart: unless-stopped

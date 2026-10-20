@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build artifacts
+frontend/dist/
+dist/
+
+# GTFS raw archives and generated DB (re-generated with npm run sync-gtfs)
+data/*.zip
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Environment & logs
+.env
+.env.local
+*.log
+npm-debug.log*
+
+# System files
+.DS_Store
+Thumbs.db
