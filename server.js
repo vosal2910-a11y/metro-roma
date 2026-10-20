@@ -26,11 +26,21 @@ const URLS = {
 };
 
 let db = null;
+if (!fs.existsSync(DB_PATH)) {
+  console.log('[SQLite] Database non trovato. Avvio sincronizzazione automatica GTFS Roma...');
+  try {
+    const { execSync } = require('child_process');
+    execSync('node scripts/sync-gtfs.js', { stdio: 'inherit' });
+  } catch (syncErr) {
+    console.error('[SQLite] Errore sincronizzazione automatica:', syncErr.message);
+  }
+}
+
 if (fs.existsSync(DB_PATH)) {
   db = new Database(DB_PATH, { readonly: true });
   console.log('[SQLite] Database GTFS Statico Roma caricato con successo.');
 } else {
-  console.warn('[SQLite] Database non trovato in data/roma_gtfs.db. Esegui "npm run sync-gtfs" per scaricare il GTFS ufficiale di Roma Mobilita.');
+  console.warn('[SQLite] Database non disponibile. Esegui "npm run sync-gtfs".');
 }
 
 // Cache in memoria per i 3 feed GTFS-RT (aggiornata ogni 15 secondi)
@@ -830,7 +840,7 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`====================================================`);
   console.log(` ROMA TRANSIT EXPRESS BACKEND ATTIVO SU PORTA ${PORT}`);
   console.log(` Feed GTFS-RT ufficiali Roma Mobilita collegati.`);

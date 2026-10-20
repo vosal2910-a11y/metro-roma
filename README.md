@@ -5,6 +5,7 @@
 [![React](https://img.shields.io/badge/Frontend-React%2018%20%2B%20Vite-61dafb.svg)](https://react.dev/)
 [![Node.js](https://img.shields.io/badge/Backend-Node.js%20%2B%20Express-339933.svg)](https://nodejs.org/)
 [![Leaflet](https://img.shields.io/badge/Map-Leaflet%201.9.4%20%2B%20OSM-199900.svg)](https://leafletjs.com/)
+[![Render](https://img.shields.io/badge/Deploy-onrender.com-46E3B7.svg)](https://render.com/)
 [![Netlify Ready](https://img.shields.io/badge/Deploy-Netlify%20Ready-00C7B7.svg)](https://www.netlify.com/)
 
 > **Progetto Open Source con Licenza MIT**  
@@ -88,6 +89,33 @@ Il progetto è pre-configurato per il deploy su **Netlify** con impostazioni pro
      VITE_API_BASE=https://tuo-backend.onrender.com
      ```
    - In questo modo il frontend su Netlify effettuerà le chiamate API direttamente al tuo backend live, mentre in locale continua a funzionare su `http://localhost:3001`.
+
+---
+
+## ☁️ Deploy su Render (onrender.com)
+
+Il progetto è pronto al 100% per il deploy su **Render** come Web Service Full-Stack (servendo sia le API che il frontend compilato), grazie alla specifica Infrastructure-as-Code [`render.yaml`](./render.yaml).
+
+### Opzione A: Deploy automatico con Blueprint (Consigliato)
+1. Vai sulla tua [Render Dashboard](https://dashboard.render.com/) e clicca su **New + -> Blueprint**.
+2. Connetti la repository GitHub: `https://github.com/vosal2910-a11y/metro-roma`.
+3. Render leggerà automaticamente il file `render.yaml`:
+   - Configura la regione `frankfurt` (Francoforte, ottimale per Roma con minima latenza).
+   - Esegue il build command: `npm run render-build` (installa i pacchetti, compila il frontend React e genera il database SQLite GTFS).
+   - Avvia il server Node.js: `npm start`.
+   - Imposta l'health check automatico su `/api/status`.
+4. Clicca su **Apply** per mettere online la Web App con URL pubblico (es. `https://metro-roma.onrender.com`).
+
+### Opzione B: Creazione manuale Web Service su Render
+- **Environment**: Node
+- **Region**: Frankfurt (EU Central)
+- **Branch**: `main`
+- **Build Command**: `npm run render-build`
+- **Start Command**: `npm start`
+- **Health Check Path**: `/api/status`
+- **Environment Variables**:
+  - `NODE_VERSION`: `20.18.0`
+  - `PORT`: `10000`
 
 ---
 

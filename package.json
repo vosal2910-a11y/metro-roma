@@ -8,7 +8,8 @@
     "dev": "node --watch server.js",
     "sync-gtfs": "node scripts/sync-gtfs.js",
     "build:frontend": "cd frontend && npm run build",
-    "dev:frontend": "cd frontend && npm run dev"
+    "dev:frontend": "cd frontend && npm run dev",
+    "render-build": "npm install && cd frontend && npm install && npm run build && cd .. && npm run sync-gtfs"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",

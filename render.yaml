@@ -1,0 +1,17 @@
+# Render Blueprint Specification for Roma Transit Express (onrender.com)
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: metro-roma
+    runtime: node
+    plan: free
+    region: frankfurt # Region closest to Rome for minimal latency
+    buildCommand: npm run render-build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: PORT
+        value: 10000
+    healthCheckPath: /api/status
