@@ -10,7 +10,8 @@ import {
   RefreshCw,
   Locate,
   Layers,
-  ChevronDown
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 import Map from './components/Map.jsx';
@@ -33,6 +34,7 @@ export default function App() {
   const [userLocation, setUserLocation] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [mobileSheetState, setMobileSheetState] = useState('half'); // 'collapsed' | 'half' | 'expanded'
 
   // Apply theme to html root
   useEffect(() => {
@@ -94,14 +96,37 @@ export default function App() {
   }, [autoRefresh]);
 
   // Handlers
+  const cycleSheetState = () => {
+    if (mobileSheetState === 'collapsed') setMobileSheetState('half');
+    else if (mobileSheetState === 'half') setMobileSheetState('expanded');
+    else setMobileSheetState('collapsed');
+  };
+
+  const toggleMapAndSheet = () => {
+    setMobileSheetState(prev => prev === 'collapsed' ? 'half' : 'collapsed');
+  };
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    if (mobileSheetState === 'collapsed') {
+      setMobileSheetState('half');
+    }
+  };
+
   const handleSelectStop = (stop) => {
     setSelectedStop(stop);
     setActiveTab('ARRIVALS');
+    if (mobileSheetState === 'collapsed') {
+      setMobileSheetState('half');
+    }
   };
 
   const handleTrackVehicle = (vehicle) => {
     setFilteredRouteId(vehicle.routeId || '');
     setActiveTab('RADAR');
+    if (mobileSheetState === 'collapsed') {
+      setMobileSheetState('half');
+    }
   };
 
   const handleSelectRoute = (route, shapeData) => {
@@ -128,7 +153,7 @@ export default function App() {
 
         <div className="top-actions">
           {backendStatus && backendStatus.counts && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', fontWeight: 700, color: 'var(--color-on-surface-variant)' }}>
+            <div className="top-bar-stats" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', fontWeight: 700, color: 'var(--color-on-surface-variant)' }}>
               <span title="Bus e tram con posizione GPS attiva in questo istante a Roma">
                 🚌 <b>{backendStatus.counts.vehicles}</b> bus GPS
               </span>
@@ -201,47 +226,77 @@ export default function App() {
           </button>
         </nav>
 
-        {/* Sidebar Interactive Panel */}
-        <div className="side-panel">
-          {activeTab === 'ARRIVALS' && (
-            <ArrivalsBoard
-              selectedStop={selectedStop}
-              onSelectStop={handleSelectStop}
-              onTrackVehicle={handleTrackVehicle}
-              onCenterStopOnMap={(st) => setSelectedStop({ ...st })}
-            />
-          )}
+        {/* Sidebar Interactive Panel with Mobile Sheet States */}
+        <div className={`side-panel ${mobileSheetState === 'collapsed' ? 'sheet-collapsed' : mobileSheetState === 'expanded' ? 'sheet-expanded' : 'sheet-half'}`}>
+          {/* Mobile Sheet Drag Handle & Summary Pill */}
+          <div className="mobile-sheet-drag-bar" onClick={cycleSheetState}>
+            <div className="drag-pill" />
+            <div className="sheet-summary-bar">
+              <div className="sheet-summary-left">
+                <span className="sheet-tab-name">
+                  {activeTab === 'ARRIVALS' && 'Arrivi Palina'}
+                  {activeTab === 'RADAR' && 'Radar Bus GPS'}
+                  {activeTab === 'ROUTES' && 'Linee & Percorsi'}
+                  {activeTab === 'NEARBY' && 'Fermate Vicine'}
+                  {activeTab === 'ALERTS' && 'Avvisi di Servizio'}
+                </span>
+                <span className="sheet-sub">
+                  {activeTab === 'ARRIVALS' && (selectedStop ? selectedStop.stop_name : 'Tocca per cercare')}
+                  {activeTab === 'RADAR' && `${vehicles.length} bus con posizione`}
+                  {activeTab === 'ROUTES' && 'Tutte le linee ATAC'}
+                  {activeTab === 'NEARBY' && 'Intorno a te'}
+                  {activeTab === 'ALERTS' && 'Stato rete Roma'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--color-primary)', fontWeight: 700 }}>
+                {mobileSheetState === 'collapsed' && <>Espandi <ChevronUp size={14} /></>}
+                {mobileSheetState === 'half' && <>Schermo intero <ChevronUp size={14} /></>}
+                {mobileSheetState === 'expanded' && <>Riduci <ChevronDown size={14} /></>}
+              </div>
+            </div>
+          </div>
 
-          {activeTab === 'RADAR' && (
-            <VehiclesRadar
-              vehicles={vehicles}
-              filteredRouteId={filteredRouteId}
-              onFilterRoute={(rId) => setFilteredRouteId(rId)}
-              onSelectVehicle={(v) => {
-                setUserLocation({ lat: v.lat, lon: v.lon });
-              }}
-            />
-          )}
+          <div className="side-panel-content">
+            {activeTab === 'ARRIVALS' && (
+              <ArrivalsBoard
+                selectedStop={selectedStop}
+                onSelectStop={handleSelectStop}
+                onTrackVehicle={handleTrackVehicle}
+                onCenterStopOnMap={(st) => setSelectedStop({ ...st })}
+              />
+            )}
 
-          {activeTab === 'ROUTES' && (
-            <RoutesExplorer
-              onSelectRoute={handleSelectRoute}
-              onSelectStop={handleSelectStop}
-            />
-          )}
+            {activeTab === 'RADAR' && (
+              <VehiclesRadar
+                vehicles={vehicles}
+                filteredRouteId={filteredRouteId}
+                onFilterRoute={(rId) => setFilteredRouteId(rId)}
+                onSelectVehicle={(v) => {
+                  setUserLocation({ lat: v.lat, lon: v.lon });
+                }}
+              />
+            )}
 
-          {activeTab === 'NEARBY' && (
-            <NearbyStops
-              userLocation={userLocation}
-              onRequestLocation={handleRequestLocation}
-              onSelectStop={handleSelectStop}
-              onCenterStopOnMap={(st) => setSelectedStop({ ...st })}
-            />
-          )}
+            {activeTab === 'ROUTES' && (
+              <RoutesExplorer
+                onSelectRoute={handleSelectRoute}
+                onSelectStop={handleSelectStop}
+              />
+            )}
 
-          {activeTab === 'ALERTS' && (
-            <AlertsFeed />
-          )}
+            {activeTab === 'NEARBY' && (
+              <NearbyStops
+                userLocation={userLocation}
+                onRequestLocation={handleRequestLocation}
+                onSelectStop={handleSelectStop}
+                onCenterStopOnMap={(st) => setSelectedStop({ ...st })}
+              />
+            )}
+
+            {activeTab === 'ALERTS' && (
+              <AlertsFeed />
+            )}
+          </div>
         </div>
 
         {/* Leaflet 1.9.4 Interactive OpenStreetMap View */}
@@ -252,6 +307,9 @@ export default function App() {
           vehicles={vehicles}
           filteredRouteId={filteredRouteId}
           userLocation={userLocation}
+          onRequestLocation={handleRequestLocation}
+          onToggleSheet={toggleMapAndSheet}
+          mobileSheetState={mobileSheetState}
           onSelectStop={(stopId) => {
             fetch(apiUrl(`/api/stops/search?q=${stopId}`))
               .then(res => res.json())
@@ -261,6 +319,9 @@ export default function App() {
           }}
           onSelectVehicle={(v) => {
             setFilteredRouteId(v.routeId || '');
+            if (mobileSheetState === 'collapsed') {
+              setMobileSheetState('half');
+            }
           }}
           onMapClick={(coords) => {
             console.log('Map clicked:', coords);
@@ -272,7 +333,7 @@ export default function App() {
       <nav className="bottom-nav">
         <button
           className={`nav-item ${activeTab === 'ARRIVALS' ? 'active' : ''}`}
-          onClick={() => setActiveTab('ARRIVALS')}
+          onClick={() => handleTabChange('ARRIVALS')}
         >
           <Clock size={18} />
           <span>Palina</span>
@@ -280,7 +341,7 @@ export default function App() {
 
         <button
           className={`nav-item ${activeTab === 'RADAR' ? 'active' : ''}`}
-          onClick={() => setActiveTab('RADAR')}
+          onClick={() => handleTabChange('RADAR')}
         >
           <Radio size={18} />
           <span>Radar</span>
@@ -288,7 +349,7 @@ export default function App() {
 
         <button
           className={`nav-item ${activeTab === 'ROUTES' ? 'active' : ''}`}
-          onClick={() => setActiveTab('ROUTES')}
+          onClick={() => handleTabChange('ROUTES')}
         >
           <RouteIcon size={18} />
           <span>Linee</span>
@@ -296,7 +357,7 @@ export default function App() {
 
         <button
           className={`nav-item ${activeTab === 'NEARBY' ? 'active' : ''}`}
-          onClick={() => setActiveTab('NEARBY')}
+          onClick={() => handleTabChange('NEARBY')}
         >
           <MapPin size={18} />
           <span>Vicine</span>
@@ -304,7 +365,7 @@ export default function App() {
 
         <button
           className={`nav-item ${activeTab === 'ALERTS' ? 'active' : ''}`}
-          onClick={() => setActiveTab('ALERTS')}
+          onClick={() => handleTabChange('ALERTS')}
         >
           <AlertTriangle size={18} />
           <span>Avvisi</span>

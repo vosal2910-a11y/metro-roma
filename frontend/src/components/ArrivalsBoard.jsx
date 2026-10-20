@@ -15,6 +15,33 @@ export default function ArrivalsBoard({
   const [isLoadingArrivals, setIsLoadingArrivals] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState(null);
 
+  const POPULAR_STOPS = [
+    { label: 'Termini', query: 'Termini' },
+    { label: 'Colosseo', query: 'Colosseo' },
+    { label: 'P.za Venezia', query: 'Piazza Venezia' },
+    { label: 'Ponte Mammolo', query: 'Ponte Mammolo' },
+    { label: 'Tiburtina', query: 'Tiburtina' },
+    { label: 'Cinecittà', query: 'Cinecitta' },
+    { label: 'P.za Mancini', query: 'Mancini' }
+  ];
+
+  const handleQuickStop = async (query) => {
+    setIsSearching(true);
+    try {
+      const res = await fetch(apiUrl(`/api/stops/search?q=${encodeURIComponent(query)}`));
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.length > 0) {
+          onSelectStop(data[0]);
+        }
+      }
+    } catch (err) {
+      console.error('Quick stop error:', err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   // Search Stops autocomplete
   useEffect(() => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
@@ -142,6 +169,21 @@ export default function ArrivalsBoard({
               ))}
             </div>
           )}
+        </div>
+
+        {/* Quick tap chips */}
+        <div className="chips-row" style={{ padding: '8px 0 2px' }}>
+          {POPULAR_STOPS.map((st) => (
+            <button
+              key={st.label}
+              type="button"
+              className="chip"
+              style={{ fontSize: '11px', padding: '4px 10px' }}
+              onClick={() => handleQuickStop(st.query)}
+            >
+              📍 {st.label}
+            </button>
+          ))}
         </div>
       </div>
 

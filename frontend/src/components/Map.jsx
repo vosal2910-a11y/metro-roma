@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
+import { Locate, Layers, Map as MapIcon } from 'lucide-react';
 
 export default function Map({
   selectedStop,
@@ -10,7 +11,10 @@ export default function Map({
   userLocation,
   onSelectStop,
   onSelectVehicle,
-  onMapClick
+  onMapClick,
+  onRequestLocation,
+  onToggleSheet,
+  mobileSheetState
 }) {
   const mapRef = useRef(null);
   const leafletMap = useRef(null);
@@ -263,6 +267,29 @@ export default function Map({
   return (
     <div className="map-container">
       <div id="map" ref={mapRef}></div>
+
+      {/* Floating Action Buttons per Mobile & Desktop */}
+      <div className="map-floating-controls">
+        <button
+          type="button"
+          className="btn-fab"
+          title="Rileva la mia posizione GPS"
+          onClick={onRequestLocation}
+        >
+          <Locate size={18} color="#1565c0" />
+        </button>
+
+        {onToggleSheet && (
+          <button
+            type="button"
+            className="btn-fab mobile-only-fab"
+            title={mobileSheetState === 'collapsed' ? 'Mostra Scheda Dettagli' : 'Vedi Mappa Intera'}
+            onClick={onToggleSheet}
+          >
+            {mobileSheetState === 'collapsed' ? <Layers size={18} color="#8e1823" /> : <MapIcon size={18} color="#8e1823" />}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
