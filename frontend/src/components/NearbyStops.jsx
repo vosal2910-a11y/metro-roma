@@ -6,7 +6,8 @@ export default function NearbyStops({
   userLocation,
   onRequestLocation,
   onSelectStop,
-  onCenterStopOnMap
+  onCenterStopOnMap,
+  isLocating = false
 }) {
   const [radius, setRadius] = useState(650);
   const [nearbyStops, setNearbyStops] = useState([]);
@@ -47,10 +48,12 @@ export default function NearbyStops({
           </div>
           <button
             className="btn-primary"
-            style={{ padding: '6px 12px', fontSize: '11px' }}
+            style={{ padding: '6px 12px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}
             onClick={onRequestLocation}
+            disabled={isLocating}
           >
-            <Locate size={14} /> Rileva GPS
+            <Locate size={14} className={isLocating ? 'spin' : ''} />
+            {isLocating ? 'Rilevamento...' : 'Rileva GPS'}
           </button>
         </div>
       </div>

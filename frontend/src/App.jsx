@@ -11,7 +11,8 @@ import {
   Locate,
   Layers,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Menu
 } from 'lucide-react';
 
 import Map from './components/Map.jsx';
@@ -20,6 +21,8 @@ import VehiclesRadar from './components/VehiclesRadar.jsx';
 import RoutesExplorer from './components/RoutesExplorer.jsx';
 import NearbyStops from './components/NearbyStops.jsx';
 import AlertsFeed from './components/AlertsFeed.jsx';
+import ToastMenu from './components/ToastMenu.jsx';
+import ToastNotification from './components/ToastNotification.jsx';
 import { apiUrl } from './api.js';
 
 export default function App() {
@@ -35,30 +38,82 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [mobileSheetState, setMobileSheetState] = useState('half'); // 'collapsed' | 'half' | 'expanded'
+  const [isToastMenuOpen, setIsToastMenuOpen] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
 
   // Apply theme to html root
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  // Request browser geolocation
+  // Toast feedback helper
+  const showToast = (text, type = 'info') => {
+    setToastMessage({ text, type });
+  };
+
+  // Auto-dismiss toast after 4s
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => setToastMessage(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
+
+  // Request browser geolocation (triggered strictly upon user tap)
   const handleRequestLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setUserLocation({
-            lat: pos.coords.latitude,
-            lon: pos.coords.longitude
-          });
-        },
-        (err) => {
-          console.warn('Geolocation error:', err.message);
-          // Fallback to Rome Termini
-          setUserLocation({ lat: 41.9010, lon: 12.5002 });
-        },
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
+    if (!navigator.geolocation) {
+      showToast('Geolocalizzazione non supportata dal tuo browser', 'error');
+      return;
     }
+
+    setIsLocating(true);
+    showToast('Richiesta autorizzazione GPS al dispositivo...', 'info');
+
+    const handleSuccess = (pos) => {
+      setIsLocating(false);
+      const { latitude, longitude, accuracy } = pos.coords;
+      setUserLocation({
+        lat: latitude,
+        lon: longitude,
+        accuracy: accuracy || null,
+        isManual: true,
+        timestamp: Date.now()
+      });
+      const accText = accuracy ? ` (±${Math.round(accuracy)}m)` : '';
+      showToast(`📍 Posizione rilevata con successo${accText}!`, 'success');
+    };
+
+    const handleFailure = (err) => {
+      console.warn('Geolocation error:', err);
+      setIsLocating(false);
+      if (err.code === 1) { // PERMISSION_DENIED
+        showToast('⚠️ Permesso GPS non concesso. Abilita la posizione nelle impostazioni del browser.', 'error');
+      } else if (err.code === 2) { // POSITION_UNAVAILABLE
+        showToast('⚠️ Posizione GPS non disponibile. Verifica che la localizzazione sia attiva sul telefono.', 'error');
+      } else if (err.code === 3) { // TIMEOUT
+        showToast('⚠️ Ricerca GPS scaduta. Riprova all\'aperto o verifica la connessione.', 'error');
+      } else {
+        showToast(`⚠️ Impossibile determinare la posizione: ${err.message || 'Errore'}`, 'error');
+      }
+    };
+
+    // Attempt high accuracy GPS first
+    navigator.geolocation.getCurrentPosition(
+      handleSuccess,
+      (err) => {
+        // Fallback retry with standard/network accuracy if GPS timed out or unavailable
+        if (err.code === 3 || err.code === 2) {
+          navigator.geolocation.getCurrentPosition(
+            handleSuccess,
+            handleFailure,
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+          );
+        } else {
+          handleFailure(err);
+        }
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
   };
 
   // Fetch status and vehicles
@@ -85,10 +140,9 @@ export default function App() {
     }
   };
 
-  // Initial fetch and 15s auto-refresh
+  // Initial fetch and 15s auto-refresh (Notice: Geolocation is NOT triggered here!)
   useEffect(() => {
     refreshAll();
-    handleRequestLocation();
 
     if (!autoRefresh) return;
     const interval = setInterval(refreshAll, 15000);
@@ -111,6 +165,14 @@ export default function App() {
     if (mobileSheetState === 'collapsed') {
       setMobileSheetState('half');
     }
+    const names = {
+      ARRIVALS: 'Palina Arrivi',
+      RADAR: 'Radar GPS',
+      ROUTES: 'Linee & Percorsi',
+      NEARBY: 'Fermate Vicine',
+      ALERTS: 'Avvisi di Servizio'
+    };
+    showToast(`Sezione: ${names[tab] || tab}`, 'info');
   };
 
   const handleSelectStop = (stop) => {
@@ -152,6 +214,18 @@ export default function App() {
         </div>
 
         <div className="top-actions">
+          {/* Menù Toast Button */}
+          <button
+            type="button"
+            className="btn-menu-toast"
+            onClick={() => setIsToastMenuOpen(true)}
+            title="Apri Menù Rapido Pagine"
+            aria-label="Apri Menù Rapido Pagine"
+          >
+            <Menu size={16} />
+            <span>Menù</span>
+          </button>
+
           {backendStatus && backendStatus.counts && (
             <div className="top-bar-stats" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', fontWeight: 700, color: 'var(--color-on-surface-variant)' }}>
               <span title="Bus e tram con posizione GPS attiva in questo istante a Roma">
@@ -290,6 +364,7 @@ export default function App() {
                 onRequestLocation={handleRequestLocation}
                 onSelectStop={handleSelectStop}
                 onCenterStopOnMap={(st) => setSelectedStop({ ...st })}
+                isLocating={isLocating}
               />
             )}
 
@@ -310,6 +385,8 @@ export default function App() {
           onRequestLocation={handleRequestLocation}
           onToggleSheet={toggleMapAndSheet}
           mobileSheetState={mobileSheetState}
+          onOpenToastMenu={() => setIsToastMenuOpen(true)}
+          isLocating={isLocating}
           onSelectStop={(stopId) => {
             fetch(apiUrl(`/api/stops/search?q=${stopId}`))
               .then(res => res.json())
@@ -371,6 +448,23 @@ export default function App() {
           <span>Avvisi</span>
         </button>
       </nav>
+
+      {/* Toast Navigation Menu */}
+      <ToastMenu
+        isOpen={isToastMenuOpen}
+        onClose={() => setIsToastMenuOpen(false)}
+        activeTab={activeTab}
+        onSelectTab={handleTabChange}
+        onRequestLocation={handleRequestLocation}
+        isLocating={isLocating}
+        vehiclesCount={vehicles.length}
+      />
+
+      {/* Floating Status / Action Toast Notification */}
+      <ToastNotification
+        toast={toastMessage}
+        onDismiss={() => setToastMessage(null)}
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
-import { Locate, Layers, Map as MapIcon } from 'lucide-react';
+import { Locate, Layers, Map as MapIcon, Menu } from 'lucide-react';
 
 export default function Map({
   selectedStop,
@@ -14,12 +14,15 @@ export default function Map({
   onMapClick,
   onRequestLocation,
   onToggleSheet,
-  mobileSheetState
+  mobileSheetState,
+  onOpenToastMenu,
+  isLocating = false
 }) {
   const mapRef = useRef(null);
   const leafletMap = useRef(null);
   const layersRef = useRef({
     user: null,
+    userAccuracy: null,
     stop: null,
     routeShape: null,
     routeStops: null,
@@ -59,7 +62,7 @@ export default function Map({
     };
   }, []);
 
-  // Update User Location Marker
+  // Update User Location Marker & Pan
   useEffect(() => {
     const map = leafletMap.current;
     if (!map) return;
@@ -67,6 +70,10 @@ export default function Map({
     if (layersRef.current.user) {
       map.removeLayer(layersRef.current.user);
       layersRef.current.user = null;
+    }
+    if (layersRef.current.userAccuracy) {
+      map.removeLayer(layersRef.current.userAccuracy);
+      layersRef.current.userAccuracy = null;
     }
 
     if (userLocation && userLocation.lat && userLocation.lon) {
@@ -77,11 +84,30 @@ export default function Map({
         iconAnchor: [10, 10]
       });
 
+      const accInfo = userLocation.accuracy ? `<br><span style="color: #1565c0; font-weight: 700;">Precisione: ±${Math.round(userLocation.accuracy)}m</span>` : '';
       const marker = L.marker([userLocation.lat, userLocation.lon], { icon: userIcon })
         .addTo(map)
-        .bindPopup(`<b>La tua posizione GPS</b><br>Lat: ${userLocation.lat.toFixed(5)}, Lon: ${userLocation.lon.toFixed(5)}`);
+        .bindPopup(`<b>La tua posizione GPS</b><br>Lat: ${userLocation.lat.toFixed(5)}, Lon: ${userLocation.lon.toFixed(5)}${accInfo}`);
 
       layersRef.current.user = marker;
+
+      // Draw accuracy circle
+      if (userLocation.accuracy) {
+        const circle = L.circle([userLocation.lat, userLocation.lon], {
+          radius: userLocation.accuracy,
+          color: '#1565c0',
+          weight: 1.5,
+          fillColor: '#2196f3',
+          fillOpacity: 0.14
+        }).addTo(map);
+        layersRef.current.userAccuracy = circle;
+      }
+
+      // Fly to user location if triggered manually or requested
+      if (userLocation.isManual) {
+        map.flyTo([userLocation.lat, userLocation.lon], 16, { animate: true, duration: 1.2 });
+        marker.openPopup();
+      }
     }
   }, [userLocation]);
 
@@ -270,13 +296,26 @@ export default function Map({
 
       {/* Floating Action Buttons per Mobile & Desktop */}
       <div className="map-floating-controls">
+        {onOpenToastMenu && (
+          <button
+            type="button"
+            className="btn-fab"
+            title="Menù Rapido Pagine"
+            onClick={onOpenToastMenu}
+            aria-label="Apri Menù Pagine"
+          >
+            <Menu size={18} color="#8e1823" />
+          </button>
+        )}
+
         <button
           type="button"
           className="btn-fab"
           title="Rileva la mia posizione GPS"
           onClick={onRequestLocation}
+          aria-label="Rileva posizione GPS"
         >
-          <Locate size={18} color="#1565c0" />
+          <Locate size={18} color="#1565c0" className={isLocating ? 'spin' : ''} />
         </button>
 
         {onToggleSheet && (
@@ -285,6 +324,7 @@ export default function Map({
             className="btn-fab mobile-only-fab"
             title={mobileSheetState === 'collapsed' ? 'Mostra Scheda Dettagli' : 'Vedi Mappa Intera'}
             onClick={onToggleSheet}
+            aria-label="Alterna Mappa e Scheda"
           >
             {mobileSheetState === 'collapsed' ? <Layers size={18} color="#8e1823" /> : <MapIcon size={18} color="#8e1823" />}
           </button>
