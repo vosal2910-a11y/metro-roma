@@ -282,6 +282,10 @@ export default function App() {
     }, '');
   };
 
+  const handleCloseToastMenu = () => {
+    setIsToastMenuOpen(false);
+  };
+
   // Touch Gesture Handlers for Bottom Sheet (Vertical Drag)
   const handleDragTouchStart = (e) => {
     dragTouchStartRef.current = {
