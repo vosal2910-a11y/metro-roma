@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Clock,
   Radio,
@@ -149,21 +149,94 @@ export default function App() {
     return () => clearInterval(interval);
   }, [autoRefresh]);
 
+  const TABS = ['ARRIVALS', 'RADAR', 'ROUTES', 'NEARBY', 'ALERTS'];
+  const lastBackPressRef = useRef(0);
+  const dragTouchStartRef = useRef({ x: 0, y: 0 });
+  const panelTouchStartRef = useRef({ x: 0, y: 0 });
+
+  // History & Back Gesture Navigation (Prevents app exit on back gesture / back button)
+  useEffect(() => {
+    // Initial state
+    window.history.replaceState({
+      tab: 'ARRIVALS',
+      sheetState: 'half',
+      hasStop: false
+    }, '');
+
+    const handlePopState = (e) => {
+      // 1. If toast menu is open, close it
+      if (isToastMenuOpen) {
+        setIsToastMenuOpen(false);
+        return;
+      }
+
+      // 2. If bottom sheet is expanded, snap down to half
+      if (mobileSheetState === 'expanded') {
+        setMobileSheetState('half');
+        return;
+      }
+
+      // 3. If viewing a specific stop, return to stop search
+      if (selectedStop) {
+        setSelectedStop(null);
+        showToast('Tornato alla ricerca fermate', 'info');
+        return;
+      }
+
+      // 4. If previous state has another tab, navigate back to it
+      if (e.state && e.state.tab && e.state.tab !== activeTab) {
+        setActiveTab(e.state.tab);
+        if (e.state.sheetState) setMobileSheetState(e.state.sheetState);
+        return;
+      }
+
+      // 5. If at the beginning, prevent closing the web app unless tapped twice
+      const now = Date.now();
+      if (now - lastBackPressRef.current < 2000) {
+        // User confirmed exit
+      } else {
+        lastBackPressRef.current = now;
+        window.history.pushState({
+          tab: activeTab,
+          sheetState: mobileSheetState,
+          hasStop: false
+        }, '');
+        showToast('Premi di nuovo indietro per uscire dalla Web App', 'info');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isToastMenuOpen, mobileSheetState, selectedStop, activeTab]);
+
   // Handlers
   const cycleSheetState = () => {
-    if (mobileSheetState === 'collapsed') setMobileSheetState('half');
-    else if (mobileSheetState === 'half') setMobileSheetState('expanded');
-    else setMobileSheetState('collapsed');
+    if (mobileSheetState === 'collapsed') {
+      setMobileSheetState('half');
+    } else if (mobileSheetState === 'half') {
+      setMobileSheetState('expanded');
+      window.history.pushState({ tab: activeTab, sheetState: 'expanded' }, '');
+    } else {
+      setMobileSheetState('collapsed');
+    }
   };
 
   const toggleMapAndSheet = () => {
     setMobileSheetState(prev => prev === 'collapsed' ? 'half' : 'collapsed');
   };
 
-  const handleTabChange = (tab) => {
+  const handleTabChange = (tab, pushHistory = true) => {
+    if (tab === activeTab && mobileSheetState !== 'collapsed') return;
     setActiveTab(tab);
     if (mobileSheetState === 'collapsed') {
       setMobileSheetState('half');
+    }
+    if (pushHistory) {
+      window.history.pushState({
+        tab,
+        sheetState: mobileSheetState === 'collapsed' ? 'half' : mobileSheetState,
+        hasStop: !!selectedStop
+      }, '');
     }
     const names = {
       ARRIVALS: 'Palina Arrivi',
@@ -181,19 +254,91 @@ export default function App() {
     if (mobileSheetState === 'collapsed') {
       setMobileSheetState('half');
     }
+    if (stop) {
+      window.history.pushState({
+        tab: 'ARRIVALS',
+        sheetState: 'half',
+        hasStop: true
+      }, '');
+    }
   };
 
   const handleTrackVehicle = (vehicle) => {
     setFilteredRouteId(vehicle.routeId || '');
-    setActiveTab('RADAR');
-    if (mobileSheetState === 'collapsed') {
-      setMobileSheetState('half');
-    }
+    handleTabChange('RADAR');
   };
 
   const handleSelectRoute = (route, shapeData) => {
     setFilteredRouteId(route.route_short_name || route.route_id);
     setSelectedRouteShape(shapeData);
+  };
+
+  const handleOpenToastMenu = () => {
+    setIsToastMenuOpen(true);
+    window.history.pushState({
+      tab: activeTab,
+      sheetState: mobileSheetState,
+      modal: 'menu'
+    }, '');
+  };
+
+  // Touch Gesture Handlers for Bottom Sheet (Vertical Drag)
+  const handleDragTouchStart = (e) => {
+    dragTouchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY
+    };
+  };
+
+  const handleDragTouchEnd = (e) => {
+    const deltaY = e.changedTouches[0].clientY - dragTouchStartRef.current.y;
+    const deltaX = e.changedTouches[0].clientX - dragTouchStartRef.current.x;
+
+    if (Math.abs(deltaY) > 35 && Math.abs(deltaY) > Math.abs(deltaX)) {
+      if (deltaY > 0) {
+        // Dragged down
+        if (mobileSheetState === 'expanded') setMobileSheetState('half');
+        else if (mobileSheetState === 'half') setMobileSheetState('collapsed');
+      } else {
+        // Dragged up
+        if (mobileSheetState === 'collapsed') setMobileSheetState('half');
+        else if (mobileSheetState === 'half') {
+          setMobileSheetState('expanded');
+          window.history.pushState({ tab: activeTab, sheetState: 'expanded' }, '');
+        }
+      }
+    }
+  };
+
+  // Touch Gesture Handlers for Panel (Horizontal Swipe between tabs / Edge-swipe Back)
+  const handlePanelTouchStart = (e) => {
+    panelTouchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY
+    };
+  };
+
+  const handlePanelTouchEnd = (e) => {
+    const deltaX = e.changedTouches[0].clientX - panelTouchStartRef.current.x;
+    const deltaY = e.changedTouches[0].clientY - panelTouchStartRef.current.y;
+
+    // Edge swipe from left: back navigation
+    if (panelTouchStartRef.current.x < 35 && deltaX > 60) {
+      window.history.back();
+      return;
+    }
+
+    // Horizontal swipe between tabs
+    if (Math.abs(deltaX) > 80 && Math.abs(deltaX) > Math.abs(deltaY) * 1.6) {
+      const idx = TABS.indexOf(activeTab);
+      if (deltaX < 0 && idx < TABS.length - 1) {
+        // Swipe left -> next tab
+        handleTabChange(TABS[idx + 1]);
+      } else if (deltaX > 0 && idx > 0) {
+        // Swipe right -> previous tab
+        handleTabChange(TABS[idx - 1]);
+      }
+    }
   };
 
   return (
@@ -218,7 +363,7 @@ export default function App() {
           <button
             type="button"
             className="btn-menu-toast"
-            onClick={() => setIsToastMenuOpen(true)}
+            onClick={handleOpenToastMenu}
             title="Apri Menù Rapido Pagine"
             aria-label="Apri Menù Rapido Pagine"
           >
@@ -300,10 +445,19 @@ export default function App() {
           </button>
         </nav>
 
-        {/* Sidebar Interactive Panel with Mobile Sheet States */}
-        <div className={`side-panel ${mobileSheetState === 'collapsed' ? 'sheet-collapsed' : mobileSheetState === 'expanded' ? 'sheet-expanded' : 'sheet-half'}`}>
-          {/* Mobile Sheet Drag Handle & Summary Pill */}
-          <div className="mobile-sheet-drag-bar" onClick={cycleSheetState}>
+        {/* Sidebar Interactive Panel with Mobile Sheet States & Touch Gestures */}
+        <div
+          className={`side-panel ${mobileSheetState === 'collapsed' ? 'sheet-collapsed' : mobileSheetState === 'expanded' ? 'sheet-expanded' : 'sheet-half'}`}
+          onTouchStart={handlePanelTouchStart}
+          onTouchEnd={handlePanelTouchEnd}
+        >
+          {/* Mobile Sheet Drag Handle & Summary Pill (Supports Vertical Drag Gestures) */}
+          <div
+            className="mobile-sheet-drag-bar"
+            onClick={cycleSheetState}
+            onTouchStart={handleDragTouchStart}
+            onTouchEnd={handleDragTouchEnd}
+          >
             <div className="drag-pill" />
             <div className="sheet-summary-bar">
               <div className="sheet-summary-left">
@@ -385,7 +539,7 @@ export default function App() {
           onRequestLocation={handleRequestLocation}
           onToggleSheet={toggleMapAndSheet}
           mobileSheetState={mobileSheetState}
-          onOpenToastMenu={() => setIsToastMenuOpen(true)}
+          onOpenToastMenu={handleOpenToastMenu}
           isLocating={isLocating}
           onSelectStop={(stopId) => {
             fetch(apiUrl(`/api/stops/search?q=${stopId}`))
@@ -452,7 +606,7 @@ export default function App() {
       {/* Toast Navigation Menu */}
       <ToastMenu
         isOpen={isToastMenuOpen}
-        onClose={() => setIsToastMenuOpen(false)}
+        onClose={handleCloseToastMenu}
         activeTab={activeTab}
         onSelectTab={handleTabChange}
         onRequestLocation={handleRequestLocation}
