@@ -27,6 +27,7 @@ data class MainUiState(
     val selectedStop: TransitStop? = null,
     val arrivals: List<TransitArrival> = emptyList(),
     val isLoadingArrivals: Boolean = false,
+    val mainMapStops: List<TransitStop> = emptyList(),
     // Radar Tab
     val vehicles: List<TransitVehicle> = emptyList(),
     val vehicleFilter: String = "",
@@ -35,6 +36,9 @@ data class MainUiState(
     val routes: List<TransitRoute> = emptyList(),
     val routeTypeFilter: String = "ALL",
     val routeSearchQuery: String = "",
+    val selectedRouteDetails: RouteDetails? = null,
+    val selectedRouteDirection: Int = 0,
+    val isLoadingRouteDetails: Boolean = false,
     // Nearby Tab
     val userLat: Double = 41.9010,
     val userLon: Double = 12.5002,
@@ -59,6 +63,7 @@ class MainScreenViewModel(
         loadRoutes()
         loadAlerts()
         loadNearby()
+        loadMainMapStops()
     }
 
     fun selectTab(tab: TransitTab) {
@@ -181,6 +186,39 @@ class MainScreenViewModel(
             val alerts = repository.getAlerts()
             _uiState.value = _uiState.value.copy(alerts = alerts)
         }
+    }
+
+    fun loadMainMapStops() {
+        viewModelScope.launch {
+            val stops = repository.getStopsInBounds(41.885, 41.915, 12.470, 12.520)
+            if (stops.isNotEmpty()) {
+                _uiState.value = _uiState.value.copy(mainMapStops = stops)
+            } else {
+                val nearby = repository.getNearbyStops(_uiState.value.userLat, _uiState.value.userLon, 800)
+                _uiState.value = _uiState.value.copy(mainMapStops = nearby.map { it.first })
+            }
+        }
+    }
+
+    fun selectRoute(route: TransitRoute) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoadingRouteDetails = true)
+            val details = repository.getRouteDetails(route.id)
+            val defaultDir = details?.directions?.keys?.firstOrNull() ?: 0
+            _uiState.value = _uiState.value.copy(
+                selectedRouteDetails = details,
+                selectedRouteDirection = defaultDir,
+                isLoadingRouteDetails = false
+            )
+        }
+    }
+
+    fun selectRouteDirection(dir: Int) {
+        _uiState.value = _uiState.value.copy(selectedRouteDirection = dir)
+    }
+
+    fun clearSelectedRoute() {
+        _uiState.value = _uiState.value.copy(selectedRouteDetails = null)
     }
 
     fun setAlertsQuery(q: String) {

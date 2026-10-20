@@ -7,9 +7,11 @@ export default function NearbyStops({
   onRequestLocation,
   onSelectStop,
   onCenterStopOnMap,
-  isLocating = false
+  isLocating = false,
+  radius = 500,
+  onRadiusChange,
+  onStopsUpdate
 }) {
-  const [radius, setRadius] = useState(650);
   const [nearbyStops, setNearbyStops] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -24,6 +26,7 @@ export default function NearbyStops({
       if (res.ok) {
         const data = await res.json();
         setNearbyStops(data);
+        if (onStopsUpdate) onStopsUpdate(data);
       }
     } catch (err) {
       console.error('Error fetching nearby stops:', err);
@@ -35,6 +38,10 @@ export default function NearbyStops({
   useEffect(() => {
     fetchNearby();
   }, [activeLat, activeLon, radius]);
+
+  const handleSelectRadius = (r) => {
+    if (onRadiusChange) onRadiusChange(r);
+  };
 
   return (
     <div>
@@ -64,7 +71,7 @@ export default function NearbyStops({
           <button
             key={r}
             className={`chip ${radius === r ? 'active' : ''}`}
-            onClick={() => setRadius(r)}
+            onClick={() => handleSelectRadius(r)}
           >
             Entro {r}m
           </button>

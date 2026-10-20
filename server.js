@@ -175,12 +175,36 @@ app.get('/api/stops/nearby', (req, res) => {
       const dLon = toRad(s.stop_lon - lon);
       const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat)) * Math.cos(toRad(s.stop_lat)) * Math.sin(dLon / 2) ** 2;
       const distance = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-      return { ...s, distance };
+      return { ...s, distance, distanceMeters: distance };
     })
     .filter(s => s.distance <= radiusMeters)
     .sort((a, b) => a.distance - b.distance);
 
   res.json(results);
+});
+
+// 3b. Fermate nel viewport / bounding box visibile della mappa
+app.get('/api/stops/bounds', (req, res) => {
+  const minLat = parseFloat(req.query.minLat);
+  const maxLat = parseFloat(req.query.maxLat);
+  const minLon = parseFloat(req.query.minLon);
+  const maxLon = parseFloat(req.query.maxLon);
+  const limit = Math.min(parseInt(req.query.limit || '150', 10), 300);
+
+  if (isNaN(minLat) || isNaN(maxLat) || isNaN(minLon) || isNaN(maxLon)) {
+    return res.status(400).json({ error: 'Coordinate bounding box mancanti o non valide' });
+  }
+  if (!db) return res.status(503).json({ error: 'Database non disponibile' });
+
+  const rows = db.prepare(`
+    SELECT stop_id, stop_code, stop_name, stop_desc, stop_lat, stop_lon
+    FROM stops
+    WHERE stop_lat BETWEEN ? AND ?
+      AND stop_lon BETWEEN ? AND ?
+    LIMIT ?
+  `).all(minLat, maxLat, minLon, maxLon, limit);
+
+  res.json(rows);
 });
 
 // 4. Arrivi in tempo reale su una specifica palina ATAC
@@ -295,19 +319,27 @@ app.get('/api/routes', (req, res) => {
   })));
 });
 
-// 7. Tracciato geometrico (shape) di una specifica linea
+// 7. Tracciato geometrico (shape) di una specifica linea (filtrabile per direzione)
 app.get('/api/routes/:routeId/shape', (req, res) => {
   const routeParam = String(req.params.routeId).trim();
+  const requestedDir = req.query.direction !== undefined ? req.query.direction : req.query.direction_id;
   if (!db) return res.status(503).json({ error: 'Database non disponibile' });
 
   // Trova i shape_id associati a questa linea
-  const trips = db.prepare(`
-    SELECT DISTINCT t.shape_id, t.direction_id, t.trip_headsign
+  let tripsQuery = `
+    SELECT t.shape_id, t.direction_id, t.trip_headsign, count(1) as c
     FROM trips t
     WHERE (t.route_id = ? OR t.route_id = (SELECT route_id FROM routes WHERE route_short_name = ? LIMIT 1))
       AND t.shape_id IS NOT NULL AND t.shape_id != ''
-    LIMIT 4
-  `).all(routeParam, routeParam);
+  `;
+  const params = [routeParam, routeParam];
+  if (requestedDir !== undefined && requestedDir !== '') {
+    tripsQuery += ` AND t.direction_id = ? `;
+    params.push(Number(requestedDir));
+  }
+  tripsQuery += ` GROUP BY t.direction_id, t.shape_id ORDER BY c DESC LIMIT 6`;
+
+  const trips = db.prepare(tripsQuery).all(...params);
 
   if (!trips.length) {
     return res.json({ routeId: routeParam, shapes: [] });
@@ -330,7 +362,7 @@ app.get('/api/routes/:routeId/shape', (req, res) => {
   res.json({ routeId: routeParam, shapes });
 });
 
-// 8. Sequenza ordinata delle fermate di una linea
+// 8. Sequenza ordinata delle fermate di una linea con nomi effettivi delle direzioni
 app.get('/api/routes/:routeId/stops', (req, res) => {
   const routeParam = String(req.params.routeId).trim();
   if (!db) return res.status(503).json({ error: 'Database non disponibile' });
@@ -359,9 +391,34 @@ app.get('/api/routes/:routeId/stops', (req, res) => {
     byDirection[row.direction_id].push(row);
   }
 
+  // Estrai i nomi ufficiali delle direzioni da trips (trip_headsign)
+  const headsignRows = db.prepare(`
+    SELECT direction_id, trip_headsign, count(1) as c
+    FROM trips
+    WHERE route_id = ? AND trip_headsign IS NOT NULL AND trip_headsign != ''
+    GROUP BY direction_id, trip_headsign
+    ORDER BY c DESC
+  `).all(actualRouteId);
+
+  const directionNames = {};
+  for (const h of headsignRows) {
+    if (directionNames[h.direction_id] === undefined) {
+      directionNames[h.direction_id] = h.trip_headsign;
+    }
+  }
+
+  // Fallback se trip_headsign non fosse presente: usa il nome dell'ultima fermata di quella direzione
+  for (const dirId of Object.keys(byDirection)) {
+    if (!directionNames[dirId] && byDirection[dirId]?.length > 0) {
+      const lastStop = byDirection[dirId][byDirection[dirId].length - 1];
+      directionNames[dirId] = lastStop.stop_name;
+    }
+  }
+
   res.json({
     route: rRow || { route_id: actualRouteId, route_short_name: actualRouteId },
-    directions: byDirection
+    directions: byDirection,
+    direction_names: directionNames
   });
 });
 

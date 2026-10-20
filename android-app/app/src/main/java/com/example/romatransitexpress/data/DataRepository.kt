@@ -52,6 +52,13 @@ data class TransitRoute(
     val type: Int
 )
 
+data class RouteDetails(
+    val route: TransitRoute,
+    val directions: Map<Int, List<TransitStop>>,
+    val directionNames: Map<Int, String>,
+    val shapes: Map<Int, List<Pair<Double, Double>>>
+)
+
 data class TransitAlert(
     val id: String,
     val header: String,
@@ -63,7 +70,9 @@ class DataRepository {
     // Cloud URL deployed on Render with fallback to local development
     private val baseUrls = listOf(
         "https://metro-roma.onrender.com",
+        "http://10.0.2.2:3001",
         "http://10.0.2.2:3000",
+        "http://localhost:3001",
         "http://localhost:3000"
     )
 
@@ -223,12 +232,116 @@ class DataRepository {
                     lon = s.optDouble("stop_lon", 0.0),
                     desc = s.optString("stop_desc", "")
                 )
-                val dist = s.optInt("distanceMeters", 0)
+                val dist = if (s.has("distance")) s.optInt("distance", 0) else s.optInt("distanceMeters", 0)
                 list.add(Pair(stop, dist))
             }
             list
         } catch (_: Exception) {
             emptyList()
+        }
+    }
+
+    suspend fun getStopsInBounds(minLat: Double, maxLat: Double, minLon: Double, maxLon: Double): List<TransitStop> = withContext(Dispatchers.IO) {
+        try {
+            val jsonStr = fetchJson("/api/stops/bounds?minLat=$minLat&maxLat=$maxLat&minLon=$minLon&maxLon=$maxLon&limit=120") ?: return@withContext emptyList()
+            val arr = JSONArray(jsonStr)
+            val list = mutableListOf<TransitStop>()
+            for (i in 0 until arr.length()) {
+                val s = arr.getJSONObject(i)
+                list.add(
+                    TransitStop(
+                        id = s.optString("stop_id", ""),
+                        code = s.optString("stop_code", s.optString("stop_id", "")),
+                        name = s.optString("stop_name", "Fermata"),
+                        lat = s.optDouble("stop_lat", 0.0),
+                        lon = s.optDouble("stop_lon", 0.0),
+                        desc = s.optString("stop_desc", "")
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun getRouteDetails(routeId: String): RouteDetails? = withContext(Dispatchers.IO) {
+        try {
+            val stopsJson = fetchJson("/api/routes/$routeId/stops") ?: return@withContext null
+            val stopsObj = JSONObject(stopsJson)
+            val rObj = stopsObj.optJSONObject("route")
+            val transitRoute = TransitRoute(
+                id = rObj?.optString("route_id", routeId) ?: routeId,
+                shortName = rObj?.optString("route_short_name", routeId) ?: routeId,
+                longName = rObj?.optString("route_long_name", "") ?: "",
+                type = rObj?.optInt("route_type", 3) ?: 3
+            )
+
+            val dirMap = mutableMapOf<Int, List<TransitStop>>()
+            val dirsObj = stopsObj.optJSONObject("directions")
+            if (dirsObj != null) {
+                val keys = dirsObj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val dirId = k.toIntOrNull() ?: 0
+                    val arr = dirsObj.optJSONArray(k) ?: JSONArray()
+                    val stopList = mutableListOf<TransitStop>()
+                    for (i in 0 until arr.length()) {
+                        val s = arr.getJSONObject(i)
+                        stopList.add(
+                            TransitStop(
+                                id = s.optString("stop_id", ""),
+                                code = s.optString("stop_code", s.optString("stop_id", "")),
+                                name = s.optString("stop_name", "Fermata"),
+                                lat = s.optDouble("stop_lat", 0.0),
+                                lon = s.optDouble("stop_lon", 0.0)
+                            )
+                        )
+                    }
+                    dirMap[dirId] = stopList
+                }
+            }
+
+            val dirNamesMap = mutableMapOf<Int, String>()
+            val namesObj = stopsObj.optJSONObject("direction_names")
+            if (namesObj != null) {
+                val keys = namesObj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val dirId = k.toIntOrNull() ?: 0
+                    dirNamesMap[dirId] = namesObj.optString(k, "")
+                }
+            }
+
+            // Fetch shapes for all directions
+            val shapeJson = fetchJson("/api/routes/$routeId/shape")
+            val shapesMap = mutableMapOf<Int, List<Pair<Double, Double>>>()
+            if (shapeJson != null) {
+                val sObj = JSONObject(shapeJson)
+                val sArr = sObj.optJSONArray("shapes") ?: JSONArray()
+                for (i in 0 until sArr.length()) {
+                    val shapeItem = sArr.getJSONObject(i)
+                    val dId = shapeItem.optInt("directionId", 0)
+                    val coordsArr = shapeItem.optJSONArray("coordinates") ?: JSONArray()
+                    val pts = mutableListOf<Pair<Double, Double>>()
+                    for (j in 0 until coordsArr.length()) {
+                        val pt = coordsArr.getJSONArray(j)
+                        pts.add(Pair(pt.getDouble(0), pt.getDouble(1)))
+                    }
+                    if (pts.isNotEmpty()) {
+                        shapesMap[dId] = pts
+                    }
+                }
+            }
+
+            RouteDetails(
+                route = transitRoute,
+                directions = dirMap,
+                directionNames = dirNamesMap,
+                shapes = shapesMap
+            )
+        } catch (_: Exception) {
+            null
         }
     }
 

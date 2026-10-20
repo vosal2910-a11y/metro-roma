@@ -11,6 +11,7 @@ export default function RoutesExplorer({
   const [typeFilter, setTypeFilter] = useState('ALL');
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [routeStops, setRouteStops] = useState(null);
+  const [routeShapeData, setRouteShapeData] = useState(null);
   const [activeDirection, setActiveDirection] = useState(0);
   const [isLoadingStops, setIsLoadingStops] = useState(false);
 
@@ -22,34 +23,50 @@ export default function RoutesExplorer({
       .catch(err => console.error('Routes fetch error:', err));
   }, []);
 
-  // When a route is clicked, fetch its shape and stops
+  // When a route is clicked, fetch its shape and stops in parallel
   const handleRouteClick = async (r) => {
     setSelectedRoute(r);
     setIsLoadingStops(true);
 
     try {
-      // 1. Fetch shape
-      const shapeRes = await fetch(apiUrl(`/api/routes/${r.route_id}/shape`));
-      if (shapeRes.ok) {
-        const shapeData = await shapeRes.json();
-        onSelectRoute(r, shapeData);
-      }
+      const [shapeRes, stopsRes] = await Promise.all([
+        fetch(apiUrl(`/api/routes/${r.route_id}/shape`)),
+        fetch(apiUrl(`/api/routes/${r.route_id}/stops`))
+      ]);
 
-      // 2. Fetch stops
-      const stopsRes = await fetch(apiUrl(`/api/routes/${r.route_id}/stops`));
-      if (stopsRes.ok) {
-        const stopsData = await stopsRes.json();
-        setRouteStops(stopsData);
-        // default to first available direction
-        const dirs = Object.keys(stopsData.directions || {});
-        if (dirs.length > 0) {
-          setActiveDirection(Number(dirs[0]));
-        }
+      let shapeData = null;
+      let stopsData = null;
+      if (shapeRes.ok) shapeData = await shapeRes.json();
+      if (stopsRes.ok) stopsData = await stopsRes.json();
+
+      setRouteShapeData(shapeData);
+      setRouteStops(stopsData);
+
+      const dirs = Object.keys(stopsData?.directions || {});
+      const firstDir = dirs.length > 0 ? Number(dirs[0]) : 0;
+      setActiveDirection(firstDir);
+
+      if (onSelectRoute) {
+        onSelectRoute(r, shapeData, stopsData?.directions?.[firstDir] || [], firstDir);
       }
     } catch (err) {
       console.error('Error fetching route details:', err);
     } finally {
       setIsLoadingStops(false);
+    }
+  };
+
+  // Change active direction
+  const handleDirectionChange = (dirId) => {
+    const dirNum = Number(dirId);
+    setActiveDirection(dirNum);
+    if (selectedRoute && routeStops && onSelectRoute) {
+      onSelectRoute(
+        selectedRoute,
+        routeShapeData,
+        routeStops?.directions?.[dirNum] || [],
+        dirNum
+      );
     }
   };
 
@@ -83,7 +100,7 @@ export default function RoutesExplorer({
       <div className="panel-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {selectedRoute && (
-            <button className="btn-icon" onClick={() => { setSelectedRoute(null); setRouteStops(null); }}>
+            <button className="btn-icon" onClick={() => { setSelectedRoute(null); setRouteStops(null); setRouteShapeData(null); }}>
               <ArrowLeft size={18} />
             </button>
           )}
@@ -187,23 +204,36 @@ export default function RoutesExplorer({
       ) : (
         /* Selected Route Detail View */
         <div style={{ padding: '12px 16px 20px' }}>
+          {/* Direction Selector with Official Headsign Destination Names */}
           {routeStops && routeStops.directions && Object.keys(routeStops.directions).length > 1 && (
             <div className="chips-row" style={{ padding: '0 0 12px' }}>
-              {Object.keys(routeStops.directions).map((dirId) => (
-                <button
-                  key={dirId}
-                  className={`chip ${activeDirection === Number(dirId) ? 'active' : ''}`}
-                  onClick={() => setActiveDirection(Number(dirId))}
-                >
-                  Direzione {Number(dirId) === 0 ? 'Andata' : 'Ritorno'}
-                </button>
-              ))}
+              {Object.keys(routeStops.directions).map((dirId) => {
+                const dirNum = Number(dirId);
+                const headsign = routeStops.direction_names?.[dirId];
+                const dirLabel = headsign ? `Verso ${headsign}` : `Direzione ${dirNum === 0 ? 'Andata' : 'Ritorno'}`;
+                return (
+                  <button
+                    key={dirId}
+                    className={`chip ${activeDirection === dirNum ? 'active' : ''}`}
+                    onClick={() => handleDirectionChange(dirId)}
+                    title={headsign || `Direzione ${dirNum}`}
+                  >
+                    {dirLabel}
+                  </button>
+                );
+              })}
             </div>
           )}
 
           <div style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--color-on-surface-variant)', marginBottom: '8px' }}>
             Fermate lungo il percorso ({routeStops?.directions?.[activeDirection]?.length || 0})
           </div>
+
+          {isLoadingStops && (
+            <div style={{ textAlign: 'center', padding: '20px', color: 'var(--color-outline)' }}>
+              Caricamento percorso e fermate...
+            </div>
+          )}
 
           {routeStops?.directions?.[activeDirection]?.map((st) => (
             <div

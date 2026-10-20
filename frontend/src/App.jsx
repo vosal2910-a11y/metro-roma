@@ -33,6 +33,9 @@ export default function App() {
   const [selectedStop, setSelectedStop] = useState(null);
   const [selectedRouteShape, setSelectedRouteShape] = useState(null);
   const [selectedRouteStops, setSelectedRouteStops] = useState(null);
+  const [activeRouteDirection, setActiveRouteDirection] = useState(0);
+  const [nearbyStops, setNearbyStops] = useState([]);
+  const [nearbyRadius, setNearbyRadius] = useState(500);
   const [filteredRouteId, setFilteredRouteId] = useState('');
   const [userLocation, setUserLocation] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -268,9 +271,17 @@ export default function App() {
     handleTabChange('RADAR');
   };
 
-  const handleSelectRoute = (route, shapeData) => {
+  const handleSelectRoute = (route, shapeData, stopsForDir, dirId) => {
     setFilteredRouteId(route.route_short_name || route.route_id);
-    setSelectedRouteShape(shapeData);
+    if (shapeData !== null && shapeData !== undefined) {
+      setSelectedRouteShape(shapeData);
+    }
+    if (stopsForDir !== undefined) {
+      setSelectedRouteStops(stopsForDir);
+    }
+    if (dirId !== undefined) {
+      setActiveRouteDirection(dirId);
+    }
   };
 
   const handleOpenToastMenu = () => {
@@ -525,6 +536,9 @@ export default function App() {
                 onSelectStop={handleSelectStop}
                 onCenterStopOnMap={(st) => setSelectedStop({ ...st })}
                 isLocating={isLocating}
+                radius={nearbyRadius}
+                onRadiusChange={(r) => setNearbyRadius(r)}
+                onStopsUpdate={(stops) => setNearbyStops(stops)}
               />
             )}
 
@@ -536,9 +550,13 @@ export default function App() {
 
         {/* Leaflet 1.9.4 Interactive OpenStreetMap View */}
         <Map
+          activeTab={activeTab}
           selectedStop={selectedStop}
           selectedRouteShape={selectedRouteShape}
           selectedRouteStops={selectedRouteStops}
+          activeRouteDirection={activeRouteDirection}
+          nearbyStops={nearbyStops}
+          nearbyRadius={nearbyRadius}
           vehicles={vehicles}
           filteredRouteId={filteredRouteId}
           userLocation={userLocation}
@@ -547,12 +565,16 @@ export default function App() {
           mobileSheetState={mobileSheetState}
           onOpenToastMenu={handleOpenToastMenu}
           isLocating={isLocating}
-          onSelectStop={(stopId) => {
-            fetch(apiUrl(`/api/stops/search?q=${stopId}`))
-              .then(res => res.json())
-              .then(data => {
-                if (data.length > 0) handleSelectStop(data[0]);
-              });
+          onSelectStop={(stopOrId) => {
+            if (typeof stopOrId === 'object' && stopOrId !== null) {
+              handleSelectStop(stopOrId);
+            } else {
+              fetch(apiUrl(`/api/stops/search?q=${stopOrId}`))
+                .then(res => res.json())
+                .then(data => {
+                  if (data.length > 0) handleSelectStop(data[0]);
+                });
+            }
           }}
           onSelectVehicle={(v) => {
             setFilteredRouteId(v.routeId || '');

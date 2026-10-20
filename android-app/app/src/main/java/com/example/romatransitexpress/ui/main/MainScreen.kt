@@ -52,6 +52,8 @@ fun MainScreen(
     BackHandler {
         if (uiState.selectedStop != null) {
             viewModel.clearSelectedStop()
+        } else if (uiState.selectedRouteDetails != null) {
+            viewModel.clearSelectedRoute()
         } else if (uiState.currentTab != TransitTab.ARRIVALS) {
             viewModel.selectTab(TransitTab.ARRIVALS)
         } else {
@@ -235,6 +237,39 @@ fun ArrivalsScreen(viewModel: MainScreenViewModel, state: MainUiState) {
                         )
                     }
                 }
+            }
+        }
+
+        // Mappa Interattiva Fermate (Non Autobus) - Cliccabili per vedere gli arrivi
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .height(210.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                val mapStops = if (state.searchResults.isNotEmpty()) {
+                    state.searchResults
+                } else if (state.selectedStop != null) {
+                    listOf(state.selectedStop) + state.mainMapStops.take(40)
+                } else {
+                    state.mainMapStops
+                }
+
+                OsmMapView(
+                    modifier = Modifier.fillMaxSize(),
+                    centerLat = state.selectedStop?.lat ?: state.userLat,
+                    centerLon = state.selectedStop?.lon ?: state.userLon,
+                    zoom = if (state.selectedStop != null) 16 else 14,
+                    stops = mapStops,
+                    selectedStop = state.selectedStop,
+                    userLocation = if (state.isGpsActive) Pair(state.userLat, state.userLon) else null,
+                    onStopSelected = { stop ->
+                        viewModel.selectStop(stop)
+                    }
+                )
             }
         }
 
@@ -591,6 +626,147 @@ fun RadarScreen(viewModel: MainScreenViewModel, state: MainUiState) {
 // =========================================================================
 @Composable
 fun RoutesScreen(viewModel: MainScreenViewModel, state: MainUiState) {
+    val details = state.selectedRouteDetails
+
+    // Route Detail View (When a line is selected)
+    if (details != null) {
+        val currentDirStops = details.directions[state.selectedRouteDirection] ?: emptyList()
+        val currentDirShape = details.shapes[state.selectedRouteDirection] ?: emptyList()
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 24.dp)
+        ) {
+            // Header with Back Button
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { viewModel.clearSelectedRoute() }) {
+                        Text("←", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = when (details.route.shortName.uppercase()) {
+                            "MEA", "MA" -> MetroAColor
+                            "MEB", "MEB1", "MB" -> MetroBColor
+                            "MEC", "MC" -> MetroCColor
+                            "2", "3", "5", "8", "14", "19" -> TramColor
+                            else -> MaterialTheme.colorScheme.primary
+                        },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(details.route.shortName, color = Color.White, fontWeight = FontWeight.Black, fontSize = 14.sp)
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Linea ${details.route.shortName}", fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
+                        if (details.route.longName.isNotBlank()) {
+                            Text(details.route.longName, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+
+            // Direction Selector Chips with official GTFS Headsign Names
+            if (details.directions.size > 1) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        details.directions.keys.sorted().forEach { dirId ->
+                            val isSelected = state.selectedRouteDirection == dirId
+                            val headsign = details.directionNames[dirId]
+                            val label = if (!headsign.isNullOrBlank()) "Verso $headsign" else (if (dirId == 0) "Andata" else "Ritorno")
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.selectRouteDirection(dirId) },
+                                label = { Text(label, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
+                                shape = CircleShape
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Interactive Map: ONLY selected direction polyline and stops!
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .height(220.dp),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    OsmMapView(
+                        modifier = Modifier.fillMaxSize(),
+                        centerLat = currentDirStops.firstOrNull()?.lat ?: 41.9028,
+                        centerLon = currentDirStops.firstOrNull()?.lon ?: 12.4964,
+                        stops = currentDirStops,
+                        routeCoordinates = currentDirShape,
+                        onStopSelected = { stop ->
+                            viewModel.selectStop(stop)
+                        }
+                    )
+                }
+            }
+
+            // Stop Sequence Header
+            item {
+                Text(
+                    "Fermate lungo il percorso (${currentDirStops.size})",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+            }
+
+            // Stops Sequence List
+            items(currentDirStops) { stop ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 3.dp)
+                        .clickable { viewModel.selectStop(stop) },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("🚏", fontSize = 12.sp)
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(stop.name, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("Palina: ${stop.code}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text("Arrivi ➔", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        return
+    }
+
     val filtered = state.routes.filter { r ->
         val q = state.routeSearchQuery.trim().uppercase()
         val matchQ = q.isEmpty() || r.shortName.uppercase().contains(q) || r.longName.uppercase().contains(q)
@@ -642,7 +818,8 @@ fun RoutesScreen(viewModel: MainScreenViewModel, state: MainUiState) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clickable { viewModel.selectRoute(r) },
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
@@ -760,6 +937,29 @@ fun NearbyScreen(viewModel: MainScreenViewModel, state: MainUiState) {
                         }
                     }
                 }
+            }
+        }
+
+        // Mappa Interattiva Vicine (Con zoom automatico al raggio scelto e fermate nei dintorni)
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .height(230.dp),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                OsmMapView(
+                    modifier = Modifier.fillMaxSize(),
+                    centerLat = state.userLat,
+                    centerLon = state.userLon,
+                    userLocation = Pair(state.userLat, state.userLon),
+                    radiusMeters = state.nearbyRadius,
+                    stops = state.nearbyStops.map { it.first },
+                    onStopSelected = { stop ->
+                        viewModel.selectStop(stop)
+                    }
+                )
             }
         }
 
